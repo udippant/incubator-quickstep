@@ -60,6 +60,7 @@
 #include "types/containers/Tuple.hpp"
 #include "types/operations/comparisons/ComparisonUtil.hpp"
 #include "utility/Macros.hpp"
+#include "utility/lip_filter/LIPFilterAdaptiveProber.hpp"
 
 #include "glog/logging.h"
 
@@ -341,20 +342,30 @@ void StorageBlock::sample(const bool is_block_sample,
 
 void StorageBlock::select(const vector<unique_ptr<const Scalar>> &selection,
                           const Predicate *predicate,
-                          InsertDestinationInterface *destination) const {
+                          InsertDestinationInterface *destination,
+                          LIPFilterAdaptiveProber *lip_filter_adaptive_prober) const {
   ColumnVectorsValueAccessor temp_result;
   {
     SubBlocksReference sub_blocks_ref(*tuple_store_,
                                       indices_,
                                       indices_consistent_);
 
+    std::unique_ptr<ValueAccessor> base_accessor(tuple_store_->createValueAccessor());
     std::unique_ptr<TupleIdSequence> matches;
-    std::unique_ptr<ValueAccessor> accessor;
-    if (predicate == nullptr) {
-      accessor.reset(tuple_store_->createValueAccessor());
-    } else {
+
+    if (lip_filter_adaptive_prober != nullptr) {
+      matches.reset(lip_filter_adaptive_prober->filterValueAccessor(base_accessor.get()));
+    }
+
+    if (predicate != nullptr) {
       matches.reset(getMatchesForPredicate(predicate));
-      accessor.reset(tuple_store_->createValueAccessor(matches.get()));
+    }
+
+    std::unique_ptr<ValueAccessor> accessor;
+    if (matches == nullptr) {
+      accessor.reset(base_accessor.release());
+    } else {
+      accessor.reset(base_accessor->createSharedTupleIdSequenceAdapterVirtual(*matches));
     }
 
     for (vector<unique_ptr<const Scalar>>::const_iterator selection_cit = selection.begin();
@@ -371,14 +382,24 @@ void StorageBlock::select(const vector<unique_ptr<const Scalar>> &selection,
 
 void StorageBlock::selectSimple(const std::vector<attribute_id> &selection,
                                 const Predicate *predicate,
-                                InsertDestinationInterface *destination) const {
-  std::unique_ptr<ValueAccessor> accessor;
+                                InsertDestinationInterface *destination,
+                                LIPFilterAdaptiveProber *lip_filter_adaptive_prober) const {
+  std::unique_ptr<ValueAccessor> base_accessor(tuple_store_->createValueAccessor());
   std::unique_ptr<TupleIdSequence> matches;
-  if (predicate == nullptr) {
-    accessor.reset(tuple_store_->createValueAccessor());
-  } else {
+
+  if (lip_filter_adaptive_prober != nullptr) {
+    matches.reset(lip_filter_adaptive_prober->filterValueAccessor(base_accessor.get()));
+  }
+
+  if (predicate != nullptr) {
     matches.reset(getMatchesForPredicate(predicate));
-    accessor.reset(tuple_store_->createValueAccessor(matches.get()));
+  }
+
+  std::unique_ptr<ValueAccessor> accessor;
+  if (matches == nullptr) {
+    accessor.reset(base_accessor.release());
+  } else {
+    accessor.reset(base_accessor->createSharedTupleIdSequenceAdapterVirtual(*matches));
   }
 
   destination->bulkInsertTuplesWithRemappedAttributes(selection,
@@ -389,37 +410,28 @@ AggregationState* StorageBlock::aggregate(
     const AggregationHandle &handle,
     const std::vector<std::unique_ptr<const Scalar>> &arguments,
     const std::vector<attribute_id> *arguments_as_attributes,
-    const Predicate *predicate,
-    std::unique_ptr<TupleIdSequence> *reuse_matches) const {
-  // If there is a filter predicate that hasn't already been evaluated,
-  // evaluate it now and save the results for other aggregates on this same
-  // block.
-  if (predicate && !*reuse_matches) {
-    reuse_matches->reset(getMatchesForPredicate(predicate));
-  }
-
+    const TupleIdSequence *filter) const {
 #ifdef QUICKSTEP_ENABLE_VECTOR_COPY_ELISION_SELECTION
   // If all the arguments to this aggregate are plain relation attributes,
   // aggregate directly on a ValueAccessor from this block to avoid a copy.
   if ((arguments_as_attributes != nullptr) && (!arguments_as_attributes->empty())) {
     DCHECK_EQ(arguments.size(), arguments_as_attributes->size())
         << "Mismatch between number of arguments and number of attribute_ids";
-    return aggregateHelperValueAccessor(handle, *arguments_as_attributes, reuse_matches->get());
+    return aggregateHelperValueAccessor(handle, *arguments_as_attributes, filter);
   }
   // TODO(shoban): We may want to optimize for ScalarLiteral here.
 #endif
 
   // Call aggregateHelperColumnVector() to materialize each argument as a
   // ColumnVector, then aggregate over those.
-  return aggregateHelperColumnVector(handle, arguments, reuse_matches->get());
+  return aggregateHelperColumnVector(handle, arguments, filter);
 }
 
 void StorageBlock::aggregateGroupBy(
     const std::vector<std::vector<std::unique_ptr<const Scalar>>> &arguments,
     const std::vector<std::unique_ptr<const Scalar>> &group_by,
-    const Predicate *predicate,
+    const TupleIdSequence *filter,
     AggregationStateHashTableBase *hash_table,
-    std::unique_ptr<TupleIdSequence> *reuse_matches,
     std::vector<std::unique_ptr<ColumnVector>> *reuse_group_by_vectors) const {
   DCHECK_GT(group_by.size(), 0u)
       << "Called aggregateGroupBy() with zero GROUP BY expressions";
@@ -438,23 +450,7 @@ void StorageBlock::aggregateGroupBy(
   // this aggregate, as well as the GROUP BY expression values.
   ColumnVectorsValueAccessor temp_result;
   {
-    std::unique_ptr<ValueAccessor> accessor;
-    if (predicate) {
-      if (!*reuse_matches) {
-        // If there is a filter predicate that hasn't already been evaluated,
-        // evaluate it now and save the results for other aggregates on this
-        // same block.
-        reuse_matches->reset(getMatchesForPredicate(predicate));
-      }
-
-      // Create a filtered ValueAccessor that only iterates over predicate
-      // matches.
-      accessor.reset(tuple_store_->createValueAccessor(reuse_matches->get()));
-    } else {
-      // Create a ValueAccessor that iterates over all tuples in this block
-      accessor.reset(tuple_store_->createValueAccessor());
-    }
-
+    std::unique_ptr<ValueAccessor> accessor(tuple_store_->createValueAccessor(filter));
     attribute_id attr_id = 0;
 
     // First, put GROUP BY keys into 'temp_result'.
@@ -503,9 +499,8 @@ void StorageBlock::aggregateDistinct(
     const std::vector<std::unique_ptr<const Scalar>> &arguments,
     const std::vector<attribute_id> *arguments_as_attributes,
     const std::vector<std::unique_ptr<const Scalar>> &group_by,
-    const Predicate *predicate,
+    const TupleIdSequence *filter,
     AggregationStateHashTableBase *distinctify_hash_table,
-    std::unique_ptr<TupleIdSequence> *reuse_matches,
     std::vector<std::unique_ptr<ColumnVector>> *reuse_group_by_vectors) const {
   DCHECK_GT(arguments.size(), 0u)
       << "Called aggregateDistinct() with zero argument expressions";
@@ -517,22 +512,7 @@ void StorageBlock::aggregateDistinct(
   // this aggregate, as well as the GROUP BY expression values.
   ColumnVectorsValueAccessor temp_result;
   {
-    std::unique_ptr<ValueAccessor> accessor;
-    if (predicate) {
-      if (!*reuse_matches) {
-        // If there is a filter predicate that hasn't already been evaluated,
-        // evaluate it now and save the results for other aggregates on this
-        // same block.
-        reuse_matches->reset(getMatchesForPredicate(predicate));
-      }
-
-      // Create a filtered ValueAccessor that only iterates over predicate
-      // matches.
-      accessor.reset(tuple_store_->createValueAccessor(reuse_matches->get()));
-    } else {
-      // Create a ValueAccessor that iterates over all tuples in this block
-      accessor.reset(tuple_store_->createValueAccessor());
-    }
+    std::unique_ptr<ValueAccessor> accessor(tuple_store_->createValueAccessor(filter));
 
 #ifdef QUICKSTEP_ENABLE_VECTOR_COPY_ELISION_SELECTION
     // If all the arguments to this aggregate are plain relation attributes,
@@ -1246,23 +1226,36 @@ bool StorageBlock::rebuildIndexes(bool short_circuit) {
   return all_indices_consistent_;
 }
 
-TupleIdSequence* StorageBlock::getMatchesForPredicate(const Predicate *predicate) const {
+TupleIdSequence* StorageBlock::getMatchesForPredicate(const Predicate *predicate,
+                                                      const TupleIdSequence *filter) const {
   if (predicate == nullptr) {
-    return tuple_store_->getExistenceMap();
+    TupleIdSequence *matched = tuple_store_->getExistenceMap();
+    if (filter != nullptr) {
+      matched->intersectWith(*filter);
+    }
+    return matched;
   }
 
   std::unique_ptr<ValueAccessor> value_accessor(tuple_store_->createValueAccessor());
-  std::unique_ptr<TupleIdSequence> existence_map;
-  if (!tuple_store_->isPacked()) {
-    existence_map.reset(tuple_store_->getExistenceMap());
-  }
   SubBlocksReference sub_blocks_ref(*tuple_store_,
                                     indices_,
                                     indices_consistent_);
-  return predicate->getAllMatches(value_accessor.get(),
-                                  &sub_blocks_ref,
-                                  nullptr,
-                                  existence_map.get());
+
+  if (!tuple_store_->isPacked()) {
+    std::unique_ptr<TupleIdSequence> existence_map(tuple_store_->getExistenceMap());
+    if (filter != nullptr) {
+      existence_map->intersectWith(*filter);
+    }
+    return predicate->getAllMatches(value_accessor.get(),
+                                    &sub_blocks_ref,
+                                    nullptr,
+                                    existence_map.get());
+  } else {
+    return predicate->getAllMatches(value_accessor.get(),
+                                    &sub_blocks_ref,
+                                    nullptr,
+                                    filter);
+  }
 }
 
 std::unordered_map<attribute_id, TypedValue>* StorageBlock::generateUpdatedValues(

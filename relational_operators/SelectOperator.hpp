@@ -38,6 +38,7 @@
 #include "relational_operators/WorkOrder.hpp"
 #include "storage/StorageBlockInfo.hpp"
 #include "utility/Macros.hpp"
+#include "utility/lip_filter/LIPFilterAdaptiveProber.hpp"
 
 #include "glog/logging.h"
 
@@ -49,6 +50,7 @@ namespace quickstep {
 
 class CatalogRelationSchema;
 class InsertDestination;
+class LIPFilterDeployment;
 class Predicate;
 class Scalar;
 class StorageManager;
@@ -250,13 +252,15 @@ class SelectOperator : public RelationalOperator {
                      StorageManager *storage_manager,
                      const Predicate *predicate,
                      const std::vector<std::unique_ptr<const Scalar>> *selection,
-                     InsertDestination *output_destination);
+                     InsertDestination *output_destination,
+                     const LIPFilterDeployment *lip_filter_deployment);
 
   void addPartitionAwareWorkOrders(WorkOrdersContainer *container,
                                    StorageManager *storage_manager,
                                    const Predicate *predicate,
                                    const std::vector<std::unique_ptr<const Scalar>> *selection,
-                                   InsertDestination *output_destination);
+                                   InsertDestination *output_destination,
+                                   const LIPFilterDeployment *lip_filter_deployment);
 
  private:
   /**
@@ -328,6 +332,7 @@ class SelectWorkOrder : public WorkOrder {
                   const std::vector<std::unique_ptr<const Scalar>> *selection,
                   InsertDestination *output_destination,
                   StorageManager *storage_manager,
+                  LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr,
                   const numa_node_id numa_node = 0)
       : WorkOrder(query_id),
         input_relation_(input_relation),
@@ -337,7 +342,8 @@ class SelectWorkOrder : public WorkOrder {
         simple_selection_(simple_selection),
         selection_(selection),
         output_destination_(DCHECK_NOTNULL(output_destination)),
-        storage_manager_(DCHECK_NOTNULL(storage_manager)) {
+        storage_manager_(DCHECK_NOTNULL(storage_manager)),
+        lip_filter_adaptive_prober_(lip_filter_adaptive_prober) {
     preferred_numa_nodes_.push_back(numa_node);
   }
 
@@ -370,6 +376,7 @@ class SelectWorkOrder : public WorkOrder {
                   const std::vector<std::unique_ptr<const Scalar>> *selection,
                   InsertDestination *output_destination,
                   StorageManager *storage_manager,
+                  LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr,
                   const numa_node_id numa_node = 0)
       : WorkOrder(query_id),
         input_relation_(input_relation),
@@ -379,7 +386,8 @@ class SelectWorkOrder : public WorkOrder {
         simple_selection_(std::move(simple_selection)),
         selection_(selection),
         output_destination_(DCHECK_NOTNULL(output_destination)),
-        storage_manager_(DCHECK_NOTNULL(storage_manager)) {
+        storage_manager_(DCHECK_NOTNULL(storage_manager)),
+        lip_filter_adaptive_prober_(lip_filter_adaptive_prober) {
     preferred_numa_nodes_.push_back(numa_node);
   }
 
@@ -406,6 +414,8 @@ class SelectWorkOrder : public WorkOrder {
 
   InsertDestination *output_destination_;
   StorageManager *storage_manager_;
+
+  std::unique_ptr<LIPFilterAdaptiveProber> lip_filter_adaptive_prober_;
 
   DISALLOW_COPY_AND_ASSIGN(SelectWorkOrder);
 };

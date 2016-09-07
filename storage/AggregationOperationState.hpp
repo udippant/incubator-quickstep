@@ -41,6 +41,7 @@ class AggregateFunction;
 class CatalogDatabaseLite;
 class CatalogRelationSchema;
 class InsertDestination;
+class LIPFilterAdaptiveProber;
 class StorageManager;
 
 /** \addtogroup Storage
@@ -156,7 +157,8 @@ class AggregationOperationState {
    * @param input_block The block ID of the storage block where the aggreates
    *        are going to be computed.
    **/
-  void aggregateBlock(const block_id input_block);
+  void aggregateBlock(const block_id input_block,
+                      LIPFilterAdaptiveProber *lip_filter_adaptive_prober);
 
   /**
    * @brief Generate the final results for the aggregates managed by this
@@ -184,8 +186,10 @@ class AggregationOperationState {
       const std::vector<std::unique_ptr<AggregationState>> &local_state);
 
   // Aggregate on input block.
-  void aggregateBlockSingleState(const block_id input_block);
-  void aggregateBlockHashTable(const block_id input_block);
+  void aggregateBlockSingleState(const block_id input_block,
+                                 LIPFilterAdaptiveProber *lip_filter_adaptive_prober);
+  void aggregateBlockHashTable(const block_id input_block,
+                               LIPFilterAdaptiveProber *lip_filter_adaptive_prober);
 
   void finalizeSingleState(InsertDestination *output_destination);
   void finalizeHashTable(InsertDestination *output_destination);

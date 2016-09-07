@@ -23,6 +23,7 @@
 #include <cstdint>
 
 #include "utility/lip_filter/LIPFilter.pb.h"
+#include "utility/lip_filter/SimpleHashSetExactFilter.hpp"
 #include "utility/lip_filter/SingleIdentityHashFilter.hpp"
 
 #include "glog/logging.h"

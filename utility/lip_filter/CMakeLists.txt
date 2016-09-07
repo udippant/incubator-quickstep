@@ -27,6 +27,7 @@ add_library(quickstep_utility_lipfilter_LIPFilterDeployment LIPFilterDeployment.
 add_library(quickstep_utility_lipfilter_LIPFilterFactory LIPFilterFactory.cpp LIPFilterFactory.hpp)
 add_library(quickstep_utility_lipfilter_LIPFilter_proto
             ${utility_lipfilter_LIPFilter_proto_srcs})
+add_library(quickstep_utility_lipfilter_SimpleHashSetExactFilter ../../empty_src.cpp SimpleHashSetExactFilter.hpp)
 add_library(quickstep_utility_lipfilter_SingleIdentityHashFilter ../../empty_src.cpp SingleIdentityHashFilter.hpp)
 
 # Link dependencies:
@@ -57,10 +58,23 @@ target_link_libraries(quickstep_utility_lipfilter_LIPFilterDeployment
 target_link_libraries(quickstep_utility_lipfilter_LIPFilterFactory
                       quickstep_utility_lipfilter_LIPFilter_proto
                       quickstep_utility_lipfilter_SingleIdentityHashFilter
+                      quickstep_utility_lipfilter_SimpleHashSetExactFilter
                       quickstep_utility_Macros)
 target_link_libraries(quickstep_utility_lipfilter_LIPFilter_proto
                       ${PROTOBUF_LIBRARY}
                       quickstep_types_Type_proto)
+target_link_libraries(quickstep_utility_lipfilter_SimpleHashSetExactFilter
+                      quickstep_storage_StorageBlob
+                      quickstep_storage_StorageBlockInfo
+                      quickstep_storage_StorageConstants
+                      quickstep_storage_StorageManager
+                      quickstep_storage_ValueAccessor
+                      quickstep_storage_ValueAccessorUtil
+                      quickstep_types_Type
+                      quickstep_utility_Alignment
+                      quickstep_utility_Macros
+                      quickstep_utility_PrimeNumber
+                      quickstep_utility_lipfilter_LIPFilter)
 target_link_libraries(quickstep_utility_lipfilter_SingleIdentityHashFilter
                       quickstep_catalog_CatalogTypedefs
                       quickstep_storage_StorageBlockInfo

@@ -30,6 +30,7 @@
 #include "storage/StorageBlock.hpp"
 #include "storage/StorageBlockInfo.hpp"
 #include "storage/StorageManager.hpp"
+#include "utility/lip_filter/LIPFilterDeployment.hpp"
 
 #include "glog/logging.h"
 
@@ -43,9 +44,14 @@ void SelectOperator::addWorkOrders(WorkOrdersContainer *container,
                                    StorageManager *storage_manager,
                                    const Predicate *predicate,
                                    const std::vector<std::unique_ptr<const Scalar>> *selection,
-                                   InsertDestination *output_destination) {
+                                   InsertDestination *output_destination,
+                                   const LIPFilterDeployment *lip_filter_deployment) {
   if (input_relation_is_stored_) {
     for (const block_id input_block_id : input_relation_block_ids_) {
+      LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr;
+      if (lip_filter_deployment != nullptr) {
+        lip_filter_adaptive_prober = lip_filter_deployment->createLIPFilterAdaptiveProber();
+      }
       container->addNormalWorkOrder(new SelectWorkOrder(query_id_,
                                                         input_relation_,
                                                         input_block_id,
@@ -54,11 +60,16 @@ void SelectOperator::addWorkOrders(WorkOrdersContainer *container,
                                                         simple_selection_,
                                                         selection,
                                                         output_destination,
-                                                        storage_manager),
+                                                        storage_manager,
+                                                        lip_filter_adaptive_prober),
                                     op_index_);
     }
   } else {
     while (num_workorders_generated_ < input_relation_block_ids_.size()) {
+      LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr;
+      if (lip_filter_deployment != nullptr) {
+        lip_filter_adaptive_prober = lip_filter_deployment->createLIPFilterAdaptiveProber();
+      }
       container->addNormalWorkOrder(
           new SelectWorkOrder(
               query_id_,
@@ -81,13 +92,18 @@ void SelectOperator::addPartitionAwareWorkOrders(WorkOrdersContainer *container,
                                                  StorageManager *storage_manager,
                                                  const Predicate *predicate,
                                                  const std::vector<std::unique_ptr<const Scalar>> *selection,
-                                                 InsertDestination *output_destination) {
+                                                 InsertDestination *output_destination,
+                                                 const LIPFilterDeployment *lip_filter_deployment) {
   DCHECK(placement_scheme_ != nullptr);
   const std::size_t num_partitions = input_relation_.getPartitionScheme().getPartitionSchemeHeader().getNumPartitions();
   if (input_relation_is_stored_) {
     for (std::size_t part_id = 0; part_id < num_partitions; ++part_id) {
       for (const block_id input_block_id :
            input_relation_block_ids_in_partition_[part_id]) {
+        LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr;
+        if (lip_filter_deployment != nullptr) {
+          lip_filter_adaptive_prober = lip_filter_deployment->createLIPFilterAdaptiveProber();
+        }
         container->addNormalWorkOrder(
             new SelectWorkOrder(
                 query_id_,
@@ -99,6 +115,7 @@ void SelectOperator::addPartitionAwareWorkOrders(WorkOrdersContainer *container,
                 selection,
                 output_destination,
                 storage_manager,
+                lip_filter_adaptive_prober,
                 placement_scheme_->getNUMANodeForBlock(input_block_id)),
             op_index_);
       }
@@ -109,6 +126,10 @@ void SelectOperator::addPartitionAwareWorkOrders(WorkOrdersContainer *container,
              input_relation_block_ids_in_partition_[part_id].size()) {
         block_id block_in_partition
             = input_relation_block_ids_in_partition_[part_id][num_workorders_generated_in_partition_[part_id]];
+        LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr;
+        if (lip_filter_deployment != nullptr) {
+          lip_filter_adaptive_prober = lip_filter_deployment->createLIPFilterAdaptiveProber();
+        }
         container->addNormalWorkOrder(
             new SelectWorkOrder(
                 query_id_,
@@ -120,6 +141,7 @@ void SelectOperator::addPartitionAwareWorkOrders(WorkOrdersContainer *container,
                 selection,
                 output_destination,
                 storage_manager,
+                lip_filter_adaptive_prober,
                 placement_scheme_->getNUMANodeForBlock(block_in_partition)),
             op_index_);
         ++num_workorders_generated_in_partition_[part_id];
@@ -146,16 +168,31 @@ bool SelectOperator::getAllWorkOrders(
   InsertDestination *output_destination =
       query_context->getInsertDestination(output_destination_index_);
 
+  const LIPFilterDeployment *lip_filter_deployment = nullptr;
+  if (lip_deployment_index_ != QueryContext::kInvalidILIPDeploymentId) {
+    lip_filter_deployment = query_context->getLIPDeployment(lip_deployment_index_);
+  }
+
   if (input_relation_is_stored_) {
     if (!started_) {
       if (input_relation_.hasPartitionScheme()) {
 #ifdef QUICKSTEP_HAVE_LIBNUMA
         if (input_relation_.hasNUMAPlacementScheme()) {
-          addPartitionAwareWorkOrders(container, storage_manager, predicate, selection, output_destination);
+          addPartitionAwareWorkOrders(container,
+                                      storage_manager,
+                                      predicate,
+                                      selection,
+                                      output_destination,
+                                      lip_filter_deployment);
         }
 #endif
       } else {
-        addWorkOrders(container, storage_manager, predicate, selection, output_destination);
+        addWorkOrders(container,
+                      storage_manager,
+                      predicate,
+                      selection,
+                      output_destination,
+                      lip_filter_deployment);
       }
       started_ = true;
     }
@@ -164,11 +201,21 @@ bool SelectOperator::getAllWorkOrders(
     if (input_relation_.hasPartitionScheme()) {
 #ifdef QUICKSTEP_HAVE_LIBNUMA
         if (input_relation_.hasNUMAPlacementScheme()) {
-          addPartitionAwareWorkOrders(container, storage_manager, predicate, selection, output_destination);
+          addPartitionAwareWorkOrders(container,
+                                      storage_manager,
+                                      predicate,
+                                      selection,
+                                      output_destination,
+                                      lip_filter_deployment);
         }
 #endif
     } else {
-        addWorkOrders(container, storage_manager, predicate, selection, output_destination);
+        addWorkOrders(container,
+                      storage_manager,
+                      predicate,
+                      selection,
+                      output_destination,
+                      lip_filter_deployment);
     }
     return done_feeding_input_relation_;
   }
@@ -222,11 +269,13 @@ void SelectWorkOrder::execute() {
   if (simple_projection_) {
     block->selectSimple(simple_selection_,
                         predicate_,
-                        output_destination_);
+                        output_destination_,
+                        lip_filter_adaptive_prober_.get());
   } else {
     block->select(*DCHECK_NOTNULL(selection_),
                   predicate_,
-                  output_destination_);
+                  output_destination_,
+                  lip_filter_adaptive_prober_.get());
   }
 }
 

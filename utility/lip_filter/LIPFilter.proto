@@ -23,7 +23,7 @@ import "types/Type.proto";
 
 enum LIPFilterType {
   BLOOM_FILTER = 1;
-  EXACT_FILTER = 2;
+  SIMPLE_HASH_SET_EXACT_FILTER = 2;
   SINGLE_IDENTITY_HASH_FILTER = 3;
 }
 

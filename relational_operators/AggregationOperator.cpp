@@ -38,14 +38,24 @@ bool AggregationOperator::getAllWorkOrders(
     StorageManager *storage_manager,
     const tmb::client_id scheduler_client_id,
     tmb::MessageBus *bus) {
+  const LIPFilterDeployment *lip_filter_deployment = nullptr;
+  if (lip_deployment_index_ != QueryContext::kInvalidILIPDeploymentId) {
+    lip_filter_deployment = query_context->getLIPDeployment(lip_deployment_index_);
+  }
+
   if (input_relation_is_stored_) {
     if (!started_) {
       for (const block_id input_block_id : input_relation_block_ids_) {
+        LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr;
+        if (lip_filter_deployment != nullptr) {
+          lip_filter_adaptive_prober = lip_filter_deployment->createLIPFilterAdaptiveProber();
+        }
         container->addNormalWorkOrder(
             new AggregationWorkOrder(
                 query_id_,
                 input_block_id,
-                query_context->getAggregationState(aggr_state_index_)),
+                query_context->getAggregationState(aggr_state_index_),
+                lip_filter_adaptive_prober),
             op_index_);
       }
       started_ = true;
@@ -53,11 +63,16 @@ bool AggregationOperator::getAllWorkOrders(
     return started_;
   } else {
     while (num_workorders_generated_ < input_relation_block_ids_.size()) {
+      LIPFilterAdaptiveProber *lip_filter_adaptive_prober = nullptr;
+      if (lip_filter_deployment != nullptr) {
+        lip_filter_adaptive_prober = lip_filter_deployment->createLIPFilterAdaptiveProber();
+      }
       container->addNormalWorkOrder(
           new AggregationWorkOrder(
               query_id_,
               input_relation_block_ids_[num_workorders_generated_],
-              query_context->getAggregationState(aggr_state_index_)),
+              query_context->getAggregationState(aggr_state_index_),
+              lip_filter_adaptive_prober),
           op_index_);
       ++num_workorders_generated_;
     }
@@ -98,7 +113,7 @@ serialization::WorkOrder* AggregationOperator::createWorkOrderProto(const block_
 
 
 void AggregationWorkOrder::execute() {
-  state_->aggregateBlock(input_block_id_);
+  state_->aggregateBlock(input_block_id_, lip_filter_adaptive_prober_.get());
 }
 
 }  // namespace quickstep

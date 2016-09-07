@@ -34,6 +34,7 @@
 #include "storage/TupleReference.hpp"
 #include "storage/TupleStorageSubBlock.hpp"
 #include "storage/ValueAccessor.hpp"
+#include "utility/lip_filter/LIPFilterBuilder.hpp"
 
 #include "glog/logging.h"
 
@@ -68,6 +69,14 @@ bool BuildHashOperator::getAllWorkOrders(
     tmb::MessageBus *bus) {
   DCHECK(query_context != nullptr);
 
+  LIPFilterBuilderPtr lip_filter_builder = nullptr;
+  if (lip_deployment_index_ != QueryContext::kInvalidILIPDeploymentId) {
+    const LIPFilterDeployment *lip_filter_deployment =
+        query_context->getLIPDeployment(lip_deployment_index_);
+    lip_filter_builder = std::shared_ptr<LIPFilterBuilder>(
+        lip_filter_deployment->createLIPFilterBuilder());
+  }
+
   JoinHashTable *hash_table = query_context->getJoinHashTable(hash_table_index_);
   if (input_relation_is_stored_) {
     if (!started_) {
@@ -79,7 +88,8 @@ bool BuildHashOperator::getAllWorkOrders(
                                    any_join_key_attributes_nullable_,
                                    input_block_id,
                                    hash_table,
-                                   storage_manager),
+                                   storage_manager,
+                                   lip_filter_builder),
             op_index_);
       }
       started_ = true;
@@ -95,7 +105,8 @@ bool BuildHashOperator::getAllWorkOrders(
               any_join_key_attributes_nullable_,
               input_relation_block_ids_[num_workorders_generated_],
               hash_table,
-              storage_manager),
+              storage_manager,
+              lip_filter_builder),
           op_index_);
       ++num_workorders_generated_;
     }
@@ -136,10 +147,10 @@ serialization::WorkOrder* BuildHashOperator::createWorkOrderProto(const block_id
                       any_join_key_attributes_nullable_);
   proto->SetExtension(serialization::BuildHashWorkOrder::join_hash_table_index, hash_table_index_);
   proto->SetExtension(serialization::BuildHashWorkOrder::block_id, block);
+  // TODO(jianqiao): update lip_filter related stuff
 
   return proto;
 }
-
 
 void BuildHashWorkOrder::execute() {
   BlockReference block(
@@ -147,6 +158,12 @@ void BuildHashWorkOrder::execute() {
 
   TupleReferenceGenerator generator(build_block_id_);
   std::unique_ptr<ValueAccessor> accessor(block->getTupleStorageSubBlock().createValueAccessor());
+
+  if (lip_filter_builder_ != nullptr) {
+    lip_filter_builder_->insertValueAccessor(accessor.get());
+    accessor->beginIterationVirtual();
+  }
+
   HashTablePutResult result;
   if (join_key_attributes_.size() == 1) {
     result = hash_table_->putValueAccessor(accessor.get(),

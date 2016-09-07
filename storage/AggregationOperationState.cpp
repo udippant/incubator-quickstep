@@ -46,10 +46,12 @@
 #include "storage/StorageBlock.hpp"
 #include "storage/StorageBlockInfo.hpp"
 #include "storage/StorageManager.hpp"
+#include "storage/ValueAccessor.hpp"
 #include "types/TypedValue.hpp"
 #include "types/containers/ColumnVector.hpp"
 #include "types/containers/ColumnVectorsValueAccessor.hpp"
 #include "types/containers/Tuple.hpp"
+#include "utility/lip_filter/LIPFilterAdaptiveProber.hpp"
 
 #include "glog/logging.h"
 
@@ -331,11 +333,12 @@ bool AggregationOperationState::ProtoIsValid(
   return true;
 }
 
-void AggregationOperationState::aggregateBlock(const block_id input_block) {
+void AggregationOperationState::aggregateBlock(const block_id input_block,
+                                               LIPFilterAdaptiveProber *lip_filter_adaptive_prober) {
   if (group_by_list_.empty()) {
-    aggregateBlockSingleState(input_block);
+    aggregateBlockSingleState(input_block, lip_filter_adaptive_prober);
   } else {
-    aggregateBlockHashTable(input_block);
+    aggregateBlockHashTable(input_block, lip_filter_adaptive_prober);
   }
 }
 
@@ -360,17 +363,27 @@ void AggregationOperationState::mergeSingleState(
 }
 
 void AggregationOperationState::aggregateBlockSingleState(
-    const block_id input_block) {
+    const block_id input_block,
+    LIPFilterAdaptiveProber *lip_filter_adaptive_prober) {
   // Aggregate per-block state for each aggregate.
   std::vector<std::unique_ptr<AggregationState>> local_state;
 
   BlockReference block(
       storage_manager_->getBlock(input_block, input_relation_));
 
-  // If there is a filter predicate, 'reuse_matches' holds the set of matching
-  // tuples so that it can be reused across multiple aggregates (i.e. we only
-  // pay the cost of evaluating the predicate once).
-  std::unique_ptr<TupleIdSequence> reuse_matches;
+  // TODO: predicate + lip_filter
+  std::unique_ptr<TupleIdSequence> filter;
+  if (lip_filter_adaptive_prober != nullptr || predicate_ != nullptr) {
+    std::unique_ptr<ValueAccessor> accessor(
+        block->getTupleStorageSubBlock().createValueAccessor());
+    if (lip_filter_adaptive_prober != nullptr) {
+      filter.reset(lip_filter_adaptive_prober->filterValueAccessor(accessor.get()));
+    }
+    if (predicate_ != nullptr) {
+      filter.reset(block->getMatchesForPredicate(predicate_.get(), filter.get()));
+    }
+  }
+
   for (std::size_t agg_idx = 0; agg_idx < handles_.size(); ++agg_idx) {
     const std::vector<attribute_id> *local_arguments_as_attributes = nullptr;
 #ifdef QUICKSTEP_ENABLE_VECTOR_COPY_ELISION_SELECTION
@@ -387,9 +400,8 @@ void AggregationOperationState::aggregateBlockSingleState(
                                arguments_[agg_idx],
                                local_arguments_as_attributes,
                                {}, /* group_by */
-                               predicate_.get(),
+                               filter.get(),
                                distinctify_hashtables_[agg_idx].get(),
-                               &reuse_matches,
                                nullptr /* reuse_group_by_vectors */);
       local_state.emplace_back(nullptr);
     } else {
@@ -397,8 +409,7 @@ void AggregationOperationState::aggregateBlockSingleState(
       local_state.emplace_back(block->aggregate(*handles_[agg_idx],
                                                 arguments_[agg_idx],
                                                 local_arguments_as_attributes,
-                                                predicate_.get(),
-                                                &reuse_matches));
+                                                filter.get()));
     }
   }
 
@@ -407,14 +418,23 @@ void AggregationOperationState::aggregateBlockSingleState(
 }
 
 void AggregationOperationState::aggregateBlockHashTable(
-    const block_id input_block) {
+    const block_id input_block,
+    LIPFilterAdaptiveProber *lip_filter_adaptive_prober) {
   BlockReference block(
       storage_manager_->getBlock(input_block, input_relation_));
 
-  // If there is a filter predicate, 'reuse_matches' holds the set of matching
-  // tuples so that it can be reused across multiple aggregates (i.e. we only
-  // pay the cost of evaluating the predicate once).
-  std::unique_ptr<TupleIdSequence> reuse_matches;
+  // TODO: predicate + lip_filter
+  std::unique_ptr<TupleIdSequence> filter;
+  if (lip_filter_adaptive_prober != nullptr || predicate_ != nullptr) {
+    std::unique_ptr<ValueAccessor> accessor(
+        block->getTupleStorageSubBlock().createValueAccessor());
+    if (lip_filter_adaptive_prober != nullptr) {
+      filter.reset(lip_filter_adaptive_prober->filterValueAccessor(accessor.get()));
+    }
+    if (predicate_ != nullptr) {
+      filter.reset(block->getMatchesForPredicate(predicate_.get(), filter.get()));
+    }
+  }
 
   // This holds values of all the GROUP BY attributes so that the can be reused
   // across multiple aggregates (i.e. we only pay the cost of evaluatin the
@@ -431,9 +451,8 @@ void AggregationOperationState::aggregateBlockHashTable(
                                arguments_[agg_idx],
                                nullptr, /* arguments_as_attributes */
                                group_by_list_,
-                               predicate_.get(),
+                               filter.get(),
                                distinctify_hashtables_[agg_idx].get(),
-                               &reuse_matches,
                                &reuse_group_by_vectors);
     }
   }
@@ -447,9 +466,8 @@ void AggregationOperationState::aggregateBlockHashTable(
   DCHECK(agg_hash_table != nullptr);
   block->aggregateGroupBy(arguments_,
                           group_by_list_,
-                          predicate_.get(),
+                          filter.get(),
                           agg_hash_table,
-                          &reuse_matches,
                           &reuse_group_by_vectors);
   group_by_hashtable_pool_->returnHashTable(agg_hash_table);
 }

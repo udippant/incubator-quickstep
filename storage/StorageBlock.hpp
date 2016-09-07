@@ -44,6 +44,7 @@ class AggregationState;
 class CatalogRelationSchema;
 class ColumnVector;
 class InsertDestinationInterface;
+class LIPFilterAdaptiveProber;
 class Predicate;
 class Scalar;
 class StorageBlockLayout;
@@ -312,6 +313,9 @@ class StorageBlock : public StorageBlockBase {
       const std::vector<attribute_id> &attribute_map,
       ValueAccessor *accessor);
 
+  TupleIdSequence* getMatchesForPredicate(const Predicate *predicate,
+                                          const TupleIdSequence *filter = nullptr) const;
+
   /**
    * @brief Perform a random sampling of data on  the StorageBlock. The number
    *       of records sampled is determined by the sample percentage in case of
@@ -349,7 +353,8 @@ class StorageBlock : public StorageBlockBase {
    **/
   void select(const std::vector<std::unique_ptr<const Scalar>> &selection,
               const Predicate *predicate,
-              InsertDestinationInterface *destination) const;
+              InsertDestinationInterface *destination,
+              LIPFilterAdaptiveProber *lip_filter_adaptive_prober) const;
 
   /**
    * @brief Perform a simple SELECT query on this StorageBlock which only
@@ -372,7 +377,8 @@ class StorageBlock : public StorageBlockBase {
    **/
   void selectSimple(const std::vector<attribute_id> &selection,
                     const Predicate *predicate,
-                    InsertDestinationInterface *destination) const;
+                    InsertDestinationInterface *destination,
+                    LIPFilterAdaptiveProber *lip_filter_adaptive_prober) const;
 
   /**
    * @brief Perform non GROUP BY aggregation on the tuples in the this storage
@@ -412,8 +418,7 @@ class StorageBlock : public StorageBlockBase {
       const AggregationHandle &handle,
       const std::vector<std::unique_ptr<const Scalar>> &arguments,
       const std::vector<attribute_id> *arguments_as_attributes,
-      const Predicate *predicate,
-      std::unique_ptr<TupleIdSequence> *reuse_matches) const;
+      const TupleIdSequence *filter) const;
 
   /**
    * @brief Perform GROUP BY aggregation on the tuples in the this storage
@@ -461,9 +466,8 @@ class StorageBlock : public StorageBlockBase {
   void aggregateGroupBy(
       const std::vector<std::vector<std::unique_ptr<const Scalar>>> &arguments,
       const std::vector<std::unique_ptr<const Scalar>> &group_by,
-      const Predicate *predicate,
+      const TupleIdSequence *filter,
       AggregationStateHashTableBase *hash_table,
-      std::unique_ptr<TupleIdSequence> *reuse_matches,
       std::vector<std::unique_ptr<ColumnVector>> *reuse_group_by_vectors) const;
 
   /**
@@ -505,9 +509,8 @@ class StorageBlock : public StorageBlockBase {
                          const std::vector<std::unique_ptr<const Scalar>> &arguments,
                          const std::vector<attribute_id> *arguments_as_attributes,
                          const std::vector<std::unique_ptr<const Scalar>> &group_by,
-                         const Predicate *predicate,
+                         const TupleIdSequence *filter,
                          AggregationStateHashTableBase *distinctify_hash_table,
-                         std::unique_ptr<TupleIdSequence> *reuse_matches,
                          std::vector<std::unique_ptr<ColumnVector>> *reuse_group_by_vectors) const;
 
   /**
@@ -626,8 +629,6 @@ class StorageBlock : public StorageBlockBase {
   // rebuild, without rebuilding any subsequent IndexSubBlocks or updating this
   // StorageBlock's header.
   bool rebuildIndexes(bool short_circuit);
-
-  TupleIdSequence* getMatchesForPredicate(const Predicate *predicate) const;
 
   std::unordered_map<attribute_id, TypedValue>* generateUpdatedValues(
       const ValueAccessor &accessor,
