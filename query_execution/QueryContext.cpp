@@ -98,7 +98,8 @@ QueryContext::QueryContext(const serialization::QueryContext &proto,
   for (int i = 0; i < proto.lip_filters_size(); ++i) {
     lip_filters_.emplace_back(
         std::unique_ptr<LIPFilter>(
-            LIPFilterFactory::ReconstructFromProto(proto.lip_filters(i))));
+            LIPFilterFactory::ReconstructFromProto(proto.lip_filters(i),
+                                                   storage_manager)));
   }
 
   for (int i = 0; i < proto.lip_filter_deployments_size(); ++i) {

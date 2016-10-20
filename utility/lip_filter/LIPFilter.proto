@@ -33,11 +33,19 @@ message LIPFilter {
   extensions 16 to max;
 }
 
+message SimpleHashSetExactFilter {
+  extend LIPFilter {
+    // All required
+    optional uint64 initial_num_entries = 16;
+    optional uint64 attribute_size = 17;
+  }
+}
+
 message SingleIdentityHashFilter {
   extend LIPFilter {
     // All required
-    optional uint64 filter_cardinality = 16;
-    optional uint64 attribute_size = 17;
+    optional uint64 filter_cardinality = 24;
+    optional uint64 attribute_size = 25;
   }
 }
 

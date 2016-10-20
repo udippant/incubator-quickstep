@@ -27,6 +27,7 @@ namespace quickstep {
 namespace serialization { class LIPFilter; }
 
 class LIPFilter;
+class StorageManager;
 
 /** \addtogroup Utility
  *  @{
@@ -42,10 +43,12 @@ class LIPFilterFactory {
    * @brief Reconstruct a LIPFilter from its serialized Protocol Buffer form.
    *
    * @param proto The Protocol Buffer representation of a LIPFilter object,
+   * @param storage_manager The StorageManager to use.
    * @return A new LIPFilter reconstructed from the supplied Protocol Buffer.
    *         Caller should take ownership of the returned object.
    */
-  static LIPFilter* ReconstructFromProto(const serialization::LIPFilter &proto);
+  static LIPFilter* ReconstructFromProto(const serialization::LIPFilter &proto,
+                                         StorageManager *storage_manager);
 
   /**
    * @brief Check whether a serialization::LIPFilter is fully-formed and

@@ -30,8 +30,37 @@
 
 namespace quickstep {
 
-LIPFilter* LIPFilterFactory::ReconstructFromProto(const serialization::LIPFilter &proto) {
+LIPFilter* LIPFilterFactory::ReconstructFromProto(const serialization::LIPFilter &proto,
+                                                  StorageManager *storage_manager) {
   switch (proto.lip_filter_type()) {
+    case serialization::LIPFilterType::SIMPLE_HASH_SET_EXACT_FILTER: {
+      const std::size_t attr_size =
+          proto.GetExtension(serialization::SimpleHashSetExactFilter::attribute_size);
+      const std::size_t initalial_num_entries =
+          proto.GetExtension(serialization::SimpleHashSetExactFilter::initial_num_entries);
+
+      switch (attr_size) {
+        case 1: {
+          return new SimpleHashSetExactFilter<std::uint8_t>(initalial_num_entries,
+                                                            storage_manager);
+        }
+        case 2: {
+          return new SimpleHashSetExactFilter<std::uint16_t>(initalial_num_entries,
+                                                             storage_manager);
+        }
+        case 4: {
+          return new SimpleHashSetExactFilter<std::uint32_t>(initalial_num_entries,
+                                                             storage_manager);
+        }
+        case 8: {
+          return new SimpleHashSetExactFilter<std::uint64_t>(initalial_num_entries,
+                                                             storage_manager);
+        }
+        default:
+          LOG(FATAL) << "Unsupported attribute size for SimpleHashSetExactFilter: "
+                     << attr_size;
+      }
+    }
     case serialization::LIPFilterType::SINGLE_IDENTITY_HASH_FILTER: {
       const std::size_t attr_size =
           proto.GetExtension(serialization::SingleIdentityHashFilter::attribute_size);
@@ -48,7 +77,7 @@ LIPFilter* LIPFilterFactory::ReconstructFromProto(const serialization::LIPFilter
         return new SingleIdentityHashFilter<std::uint8_t>(filter_cardinality);
       }
     }
-    // TODO(jianqiao): handle the BLOOM_FILTER and EXACT_FILTER implementations.
+    // TODO(jianqiao): handle the BLOOM_FILTER implementations.
     default:
       LOG(FATAL) << "Unsupported LIP filter type: "
                  << serialization::LIPFilterType_Name(proto.lip_filter_type());
@@ -58,6 +87,13 @@ LIPFilter* LIPFilterFactory::ReconstructFromProto(const serialization::LIPFilter
 
 bool LIPFilterFactory::ProtoIsValid(const serialization::LIPFilter &proto) {
   switch (proto.lip_filter_type()) {
+    case serialization::LIPFilterType::SIMPLE_HASH_SET_EXACT_FILTER: {
+      const std::size_t attr_size =
+          proto.GetExtension(serialization::SimpleHashSetExactFilter::attribute_size);
+      const std::size_t initial_num_entries =
+          proto.GetExtension(serialization::SimpleHashSetExactFilter::initial_num_entries);
+      return (attr_size != 0 && initial_num_entries != 0);
+    }
     case serialization::LIPFilterType::SINGLE_IDENTITY_HASH_FILTER: {
       const std::size_t attr_size =
           proto.GetExtension(serialization::SingleIdentityHashFilter::attribute_size);

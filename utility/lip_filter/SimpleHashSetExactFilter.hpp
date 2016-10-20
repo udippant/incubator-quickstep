@@ -44,19 +44,21 @@ template <typename KeyCppType>
 class SimpleHashSetExactFilter : public LIPFilter {
  public:
   SimpleHashSetExactFilter(const std::size_t num_entries,
-                           StorageManager *storage_manager) {
+                           StorageManager *storage_manager)
+      : LIPFilter(LIPFilterType::kSimpleHashSetExactFilter),
+        storage_manager_(storage_manager) {
     // Pick out a prime number of slots and calculate storage requirements.
     std::size_t num_slots_tmp = get_next_prime_number(num_entries * kHashTableLoadFactor);
     std::size_t required_memory = sizeof(Header)
                                   + num_slots_tmp * sizeof(std::atomic<std::size_t>)
                                   + (num_slots_tmp / kHashTableLoadFactor) * sizeof(Bucket);
-    std::size_t num_storage_slots = this->storage_manager_->SlotsNeededForBytes(required_memory);
+    std::size_t num_storage_slots = storage_manager_->SlotsNeededForBytes(required_memory);
 
     // Get a StorageBlob to hold the hash table.
-    const block_id blob_id = this->storage_manager_->createBlob(num_storage_slots);
-    this->blob_ = this->storage_manager_->getBlobMutable(blob_id);
+    const block_id blob_id = storage_manager_->createBlob(num_storage_slots);
+    blob_ = storage_manager_->getBlobMutable(blob_id);
 
-    void *aligned_memory_start = this->blob_->getMemoryMutable();
+    void *aligned_memory_start = blob_->getMemoryMutable();
     std::size_t available_memory = num_storage_slots * kSlotSizeBytes;
 
     // Locate the header.
@@ -168,7 +170,7 @@ class SimpleHashSetExactFilter : public LIPFilter {
         continue;
       }
       // Chase the next pointer.
-      const Bucket *bucket = buckets_ + (existing_chain_ptr - 1);
+      Bucket *bucket = buckets_ + (existing_chain_ptr - 1);
       if (bucket->hash == hash_code) {
         // The key is already in the hash table, done.
         return;
@@ -242,6 +244,9 @@ class SimpleHashSetExactFilter : public LIPFilter {
 
   std::atomic<std::size_t> *slots_;
   Bucket *buckets_;
+
+  StorageManager *storage_manager_;
+  MutableBlobReference blob_;
 
   DISALLOW_COPY_AND_ASSIGN(SimpleHashSetExactFilter);
 };
