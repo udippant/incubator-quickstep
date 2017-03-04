@@ -32,7 +32,7 @@
 #include "query_optimizer/expressions/PatternMatcher.hpp"
 #include "query_optimizer/expressions/Scalar.hpp"
 #include "types/Type.hpp"
-#include "types/operations/unary_operations/NumericCastOperation.hpp"
+#include "types/operations/unary_operations/CastOperation.hpp"
 
 #include "glog/logging.h"
 
@@ -51,8 +51,9 @@ ExpressionPtr Cast::copyWithNewChildren(
 
 ::quickstep::Scalar *Cast::concretize(
     const std::unordered_map<ExprId, const CatalogAttribute*> &substitution_map) const {
-  return new ::quickstep::ScalarUnaryExpression(::quickstep::NumericCastOperation::Instance(target_type_),
-                                                operand_->concretize(substitution_map));
+//  return new ::quickstep::ScalarUnaryExpression(::quickstep::NumericCastOperation::Instance(target_type_),
+//                                                operand_->concretize(substitution_map));
+  return nullptr;
 }
 
 void Cast::getFieldStringItems(
@@ -62,11 +63,11 @@ void Cast::getFieldStringItems(
     std::vector<OptimizerTreeBaseNodePtr> *non_container_child_fields,
     std::vector<std::string> *container_child_field_names,
     std::vector<std::vector<OptimizerTreeBaseNodePtr>> *container_child_fields) const {
-  inline_field_names->push_back("target_type");
-  inline_field_values->push_back(target_type_.getName());
-
-  non_container_child_field_names->push_back("operand");
-  non_container_child_fields->push_back(operand_);
+//  inline_field_names->push_back("target_type");
+//  inline_field_values->push_back(target_type_.getName());
+//
+//  non_container_child_field_names->push_back("operand");
+//  non_container_child_fields->push_back(operand_);
 }
 
 }  // namespace expressions

@@ -89,8 +89,9 @@ target_link_libraries(quickstep_queryoptimizer_expressions_BinaryExpression
                       quickstep_queryoptimizer_expressions_ExpressionType
                       quickstep_queryoptimizer_expressions_PatternMatcher
                       quickstep_queryoptimizer_expressions_Scalar
+                      quickstep_queryoptimizer_expressions_ScalarLiteral
+                      quickstep_types_operations_OperationSignature
                       quickstep_types_operations_binaryoperations_BinaryOperation
-                      quickstep_types_operations_binaryoperations_BinaryOperationID
                       quickstep_utility_Macros)
 target_link_libraries(quickstep_queryoptimizer_expressions_Cast
                       glog
@@ -104,7 +105,7 @@ target_link_libraries(quickstep_queryoptimizer_expressions_Cast
                       quickstep_queryoptimizer_expressions_PatternMatcher
                       quickstep_queryoptimizer_expressions_Scalar
                       quickstep_types_Type
-                      quickstep_types_operations_unaryoperations_NumericCastOperation
+                      quickstep_types_operations_unaryoperations_CastOperation
                       quickstep_utility_Macros)
 target_link_libraries(quickstep_queryoptimizer_expressions_ComparisonExpression
                       glog
@@ -299,8 +300,9 @@ target_link_libraries(quickstep_queryoptimizer_expressions_UnaryExpression
                       quickstep_queryoptimizer_expressions_ExpressionType
                       quickstep_queryoptimizer_expressions_PatternMatcher
                       quickstep_queryoptimizer_expressions_Scalar
+                      quickstep_queryoptimizer_expressions_ScalarLiteral
+                      quickstep_types_operations_OperationSignature
                       quickstep_types_operations_unaryoperations_UnaryOperation
-                      quickstep_types_operations_unaryoperations_UnaryOperationID
                       quickstep_utility_Macros)
 target_link_libraries(quickstep_queryoptimizer_expressions_WindowAggregateFunction
                       glog
