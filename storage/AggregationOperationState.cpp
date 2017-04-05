@@ -38,6 +38,7 @@
 #include "expressions/aggregation/AggregationHandle.hpp"
 #include "expressions/predicate/Predicate.hpp"
 #include "expressions/scalar/Scalar.hpp"
+#include "expressions/scalar/ScalarCache.hpp"
 #include "storage/AggregationOperationState.pb.h"
 #include "storage/CollisionFreeVectorTable.hpp"
 #include "storage/HashTableFactory.hpp"
@@ -48,6 +49,7 @@
 #include "storage/StorageBlockInfo.hpp"
 #include "storage/StorageManager.hpp"
 #include "storage/SubBlocksReference.hpp"
+#include "storage/ThreadPrivateCompactKeyHashTable.hpp"
 #include "storage/TupleIdSequence.hpp"
 #include "storage/TupleStorageSubBlock.hpp"
 #include "storage/ValueAccessor.hpp"
@@ -93,11 +95,15 @@ AggregationOperationState::AggregationOperationState(
                                     !is_distinct_.empty(), std::logical_and<bool>())),
       storage_manager_(storage_manager) {
   if (!group_by.empty()) {
-    if (hash_table_impl_type == HashTableImplType::kCollisionFreeVector) {
-      is_aggregate_collision_free_ = true;
-    } else {
-      is_aggregate_partitioned_ = checkAggregatePartitioned(
-          estimated_num_entries, is_distinct_, group_by, aggregate_functions);
+    switch (hash_table_impl_type) {
+      case HashTableImplType::kCollisionFreeVector:
+        is_aggregate_collision_free_ = true;
+        break;
+      case HashTableImplType::kThreadPrivateCompactKey:
+        break;
+      default:
+        is_aggregate_partitioned_ = checkAggregatePartitioned(
+            estimated_num_entries, is_distinct_, group_by, aggregate_functions);
     }
   }
 
@@ -491,9 +497,10 @@ void AggregationOperationState::aggregateBlock(const block_id input_block,
     SubBlocksReference sub_blocks_ref(tuple_store,
                                       block->getIndices(),
                                       block->getIndicesConsistent());
+    ScalarCache scalar_cache;
     for (const auto &expression : non_trivial_expressions_) {
       non_trivial_results->addColumn(
-          expression->getAllValues(accessor, &sub_blocks_ref));
+          expression->getAllValues(accessor, &sub_blocks_ref, &scalar_cache));
     }
   }
 
@@ -713,7 +720,17 @@ void AggregationOperationState::finalizeHashTable(
     finalizeHashTableImplPartitioned(partition_id, output_destination);
   } else {
     DCHECK_EQ(0u, partition_id);
-    finalizeHashTableImplThreadPrivate(output_destination);
+    DCHECK(group_by_hashtable_pool_ != nullptr);
+    switch (group_by_hashtable_pool_->getHashTableImplType()) {
+      case HashTableImplType::kSeparateChaining:
+        finalizeHashTableImplThreadPrivatePackedPayload(output_destination);
+        break;
+      case HashTableImplType::kThreadPrivateCompactKey:
+        finalizeHashTableImplThreadPrivateCompactKey(output_destination);
+        break;
+      default:
+        LOG(FATAL) << "Not supported";
+    }
   }
 }
 
@@ -838,7 +855,7 @@ void AggregationOperationState::finalizeHashTableImplPartitioned(
   output_destination->bulkInsertTuples(&complete_result);
 }
 
-void AggregationOperationState::finalizeHashTableImplThreadPrivate(
+void AggregationOperationState::finalizeHashTableImplThreadPrivatePackedPayload(
     InsertDestination *output_destination) {
   // TODO(harshad) - The merge phase may be slower when each hash table contains
   // large number of entries. We should find ways in which we can perform a
@@ -941,6 +958,34 @@ void AggregationOperationState::finalizeHashTableImplThreadPrivate(
   for (std::unique_ptr<ColumnVector> &final_value_cv : final_values) {
     complete_result.addColumn(final_value_cv.release());
   }
+
+  // Bulk-insert the complete result.
+  output_destination->bulkInsertTuples(&complete_result);
+}
+
+void AggregationOperationState::finalizeHashTableImplThreadPrivateCompactKey(
+    InsertDestination *output_destination) {
+  auto *hash_tables = group_by_hashtable_pool_->getAllHashTables();
+  DCHECK(hash_tables != nullptr);
+  if (hash_tables->empty()) {
+    return;
+  }
+
+  std::unique_ptr<ThreadPrivateCompactKeyHashTable> final_hash_table(
+      static_cast<ThreadPrivateCompactKeyHashTable*>(hash_tables->back().release()));
+  for (std::size_t i = 0; i < hash_tables->size() - 1; ++i) {
+    std::unique_ptr<AggregationStateHashTableBase> hash_table(
+        hash_tables->at(i).release());
+    final_hash_table->merge(
+        static_cast<const ThreadPrivateCompactKeyHashTable*>(hash_table.get()));
+    hash_table->destroyPayload();
+  }
+
+//  final_hash_table->print();
+
+  ColumnVectorsValueAccessor complete_result;
+  final_hash_table->finalize(&complete_result);
+  final_hash_table->destroyPayload();
 
   // Bulk-insert the complete result.
   output_destination->bulkInsertTuples(&complete_result);

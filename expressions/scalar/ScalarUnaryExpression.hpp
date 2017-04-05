@@ -21,6 +21,7 @@
 #define QUICKSTEP_EXPRESSIONS_SCALAR_SCALAR_UNARY_EXPRESSION_HPP_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -29,6 +30,7 @@
 #include "expressions/scalar/Scalar.hpp"
 #include "storage/StorageBlockInfo.hpp"
 #include "types/TypedValue.hpp"
+#include "types/containers/ColumnVector.hpp"
 #include "types/operations/unary_operations/UnaryOperation.hpp"
 #include "utility/Macros.hpp"
 
@@ -36,7 +38,7 @@
 
 namespace quickstep {
 
-class ColumnVector;
+class ScalarCache;
 class ValueAccessor;
 
 struct SubBlocksReference;
@@ -93,15 +95,26 @@ class ScalarUnaryExpression : public Scalar {
     return static_value_;
   }
 
-  ColumnVector* getAllValues(ValueAccessor *accessor,
-                             const SubBlocksReference *sub_blocks_ref) const override;
+  ColumnVectorPtr getAllValues(ValueAccessor *accessor,
+                               const SubBlocksReference *sub_blocks_ref,
+                               ScalarCache *scalar_cache) const override;
 
-  ColumnVector* getAllValuesForJoin(
+  ColumnVectorPtr getAllValuesForJoin(
       const relation_id left_relation_id,
       ValueAccessor *left_accessor,
       const relation_id right_relation_id,
       ValueAccessor *right_accessor,
-      const std::vector<std::pair<tuple_id, tuple_id>> &joined_tuple_ids) const override;
+      const std::vector<std::pair<tuple_id, tuple_id>> &joined_tuple_ids,
+      ScalarCache *scalar_cache) const override;
+
+ protected:
+  void getFieldStringItems(
+      std::vector<std::string> *inline_field_names,
+      std::vector<std::string> *inline_field_values,
+      std::vector<std::string> *non_container_child_field_names,
+      std::vector<const Expression*> *non_container_child_fields,
+      std::vector<std::string> *container_child_field_names,
+      std::vector<std::vector<const Expression*>> *container_child_fields) const override;
 
  private:
   void initHelper(bool own_children);

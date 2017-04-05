@@ -25,6 +25,8 @@
 #include "query_optimizer/OptimizerTree.hpp"
 #include "types/Type.hpp"
 
+#include "glog/logging.h"
+
 namespace quickstep {
 namespace optimizer {
 namespace expressions {

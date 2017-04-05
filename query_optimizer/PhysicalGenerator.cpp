@@ -27,12 +27,15 @@
 #include "query_optimizer/logical/Logical.hpp"
 #include "query_optimizer/physical/Physical.hpp"
 #include "query_optimizer/rules/AttachLIPFilters.hpp"
+#include "query_optimizer/rules/CollapseSelection.hpp"
+#include "query_optimizer/rules/ExtractCommonSubexpression.hpp"
 #include "query_optimizer/rules/FuseAggregateJoin.hpp"
 #include "query_optimizer/rules/InjectJoinFilters.hpp"
 #include "query_optimizer/rules/PruneColumns.hpp"
 #include "query_optimizer/rules/PushDownLowCostDisjunctivePredicate.hpp"
 #include "query_optimizer/rules/ReduceGroupByAttributes.hpp"
 #include "query_optimizer/rules/ReorderColumns.hpp"
+#include "query_optimizer/rules/ReuseAggregateExpressions.hpp"
 #include "query_optimizer/rules/StarSchemaHashJoinOrderOptimization.hpp"
 #include "query_optimizer/rules/SwapProbeBuild.hpp"
 #include "query_optimizer/strategy/Aggregate.hpp"
@@ -146,7 +149,15 @@ P::PhysicalPtr PhysicalGenerator::optimizePlan() {
     rules.emplace_back(new ReorderColumns());
   }
 
+  rules.emplace_back(new ReuseAggregateExpressions(optimizer_context_));
+
   rules.emplace_back(new FuseAggregateJoin());
+
+  rules.emplace_back(new CollapseSelection());
+
+  rules.emplace_back(new PruneColumns());
+
+  rules.emplace_back(new ExtractCommonSubexpression(optimizer_context_));
 
   // NOTE(jianqiao): Adding rules after InjectJoinFilters (or AttachLIPFilters) requires
   // extra handling of LIPFilterConfiguration for transformed nodes. So currently it is
@@ -165,7 +176,8 @@ P::PhysicalPtr PhysicalGenerator::optimizePlan() {
              << physical_plan_->toString();
   }
 
-  DVLOG(4) << "Optimized physical plan:\n" << physical_plan_->toString();
+//  DVLOG(4) << "Optimized physical plan:\n" << physical_plan_->toString();
+  std::cerr << "Optimized physical plan:\n" << physical_plan_->toString();
 
   if (FLAGS_visualize_plan) {
     quickstep::PlanVisualizer plan_visualizer;

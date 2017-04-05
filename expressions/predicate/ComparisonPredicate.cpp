@@ -41,6 +41,7 @@
 #include "types/containers/ColumnVector.hpp"
 #include "types/operations/Operation.pb.h"
 #include "types/operations/comparisons/Comparison.hpp"
+#include "types/operations/comparisons/ComparisonID.hpp"
 #include "utility/Macros.hpp"
 #include "utility/PtrVector.hpp"
 
@@ -190,18 +191,20 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
 #endif  // QUICKSTEP_ENABLE_VECTOR_COPY_ELISION_SELECTION
 
     if (short_circuit_adapter) {
-      std::unique_ptr<ColumnVector> right_values(right_operand_->getAllValues(
+      ColumnVectorPtr right_values(right_operand_->getAllValues(
           short_circuit_adapter.get(),
-          sub_blocks_ref));
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
       return fast_comparator_->compareStaticValueAndColumnVector(
           left_operand_->getStaticValue(),
           *right_values,
           nullptr,
           filter);
     } else {
-      std::unique_ptr<ColumnVector> right_values(right_operand_->getAllValues(
+      ColumnVectorPtr right_values(right_operand_->getAllValues(
           accessor,
-          sub_blocks_ref));
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
       return fast_comparator_->compareStaticValueAndColumnVector(
           left_operand_->getStaticValue(),
           *right_values,
@@ -222,18 +225,20 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
 #endif  // QUICKSTEP_ENABLE_VECTOR_COPY_ELISION_SELECTION
 
     if (short_circuit_adapter) {
-      std::unique_ptr<ColumnVector> left_values(left_operand_->getAllValues(
+      ColumnVectorPtr left_values(left_operand_->getAllValues(
           short_circuit_adapter.get(),
-          sub_blocks_ref));
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
       return fast_comparator_->compareColumnVectorAndStaticValue(
           *left_values,
           right_operand_->getStaticValue(),
           nullptr,
           filter);
     } else {
-      std::unique_ptr<ColumnVector> left_values(left_operand_->getAllValues(
+      ColumnVectorPtr left_values(left_operand_->getAllValues(
           accessor,
-          sub_blocks_ref));
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
       return fast_comparator_->compareColumnVectorAndStaticValue(
           *left_values,
           right_operand_->getStaticValue(),
@@ -255,9 +260,10 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
                                                             filter);
       } else {
         if (short_circuit_adapter) {
-          std::unique_ptr<ColumnVector> right_values(right_operand_->getAllValues(
+          ColumnVectorPtr right_values(right_operand_->getAllValues(
               short_circuit_adapter.get(),
-              sub_blocks_ref));
+              sub_blocks_ref,
+              nullptr /* scalar_cache */));
           return fast_comparator_->compareValueAccessorAndColumnVector(
               short_circuit_adapter.get(),
               left_operand_attr_id,
@@ -265,9 +271,10 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
               nullptr,
               filter);
         } else {
-          std::unique_ptr<ColumnVector> right_values(right_operand_->getAllValues(
+          ColumnVectorPtr right_values(right_operand_->getAllValues(
               accessor,
-              sub_blocks_ref));
+              sub_blocks_ref,
+              nullptr /* scalar_cache */));
           return fast_comparator_->compareValueAccessorAndColumnVector(accessor,
                                                                        left_operand_attr_id,
                                                                        *right_values,
@@ -277,9 +284,10 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
       }
     } else if (right_operand_attr_id != -1) {
       if (short_circuit_adapter) {
-        std::unique_ptr<ColumnVector> left_values(left_operand_->getAllValues(
+        ColumnVectorPtr left_values(left_operand_->getAllValues(
             short_circuit_adapter.get(),
-            sub_blocks_ref));
+            sub_blocks_ref,
+            nullptr /* scalar_cache */));
         return fast_comparator_->compareColumnVectorAndValueAccessor(
             *left_values,
             short_circuit_adapter.get(),
@@ -287,9 +295,10 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
             nullptr,
             filter);
       } else {
-        std::unique_ptr<ColumnVector> left_values(left_operand_->getAllValues(
+        ColumnVectorPtr left_values(left_operand_->getAllValues(
             accessor,
-            sub_blocks_ref));
+            sub_blocks_ref,
+            nullptr /* scalar_cache */));
         return fast_comparator_->compareColumnVectorAndValueAccessor(*left_values,
                                                                      accessor,
                                                                      right_operand_attr_id,
@@ -300,23 +309,27 @@ TupleIdSequence* ComparisonPredicate::getAllMatches(
 #endif  // QUICKSTEP_ENABLE_VECTOR_COPY_ELISION_SELECTION
 
     if (short_circuit_adapter) {
-      std::unique_ptr<ColumnVector> left_values(left_operand_->getAllValues(
+      ColumnVectorPtr left_values(left_operand_->getAllValues(
           short_circuit_adapter.get(),
-          sub_blocks_ref));
-      std::unique_ptr<ColumnVector> right_values(right_operand_->getAllValues(
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
+      ColumnVectorPtr right_values(right_operand_->getAllValues(
           short_circuit_adapter.get(),
-          sub_blocks_ref));
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
       return fast_comparator_->compareColumnVectors(*left_values,
                                                     *right_values,
                                                     nullptr,
                                                     filter);
     } else {
-      std::unique_ptr<ColumnVector> left_values(left_operand_->getAllValues(
+      ColumnVectorPtr left_values(left_operand_->getAllValues(
           accessor,
-          sub_blocks_ref));
-      std::unique_ptr<ColumnVector> right_values(right_operand_->getAllValues(
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
+      ColumnVectorPtr right_values(right_operand_->getAllValues(
           accessor,
-          sub_blocks_ref));
+          sub_blocks_ref,
+          nullptr /* scalar_cache */));
       return fast_comparator_->compareColumnVectors(*left_values,
                                                     *right_values,
                                                     filter,
@@ -371,6 +384,30 @@ void ComparisonPredicate::initHelper(bool own_children) {
                                       left_operand_type.getName().c_str(),
                                       right_operand_type.getName().c_str());
   }
+}
+
+void ComparisonPredicate::getFieldStringItems(
+    std::vector<std::string> *inline_field_names,
+    std::vector<std::string> *inline_field_values,
+    std::vector<std::string> *non_container_child_field_names,
+    std::vector<const Expression*> *non_container_child_fields,
+    std::vector<std::string> *container_child_field_names,
+    std::vector<std::vector<const Expression*>> *container_child_fields) const {
+  Predicate::getFieldStringItems(inline_field_names,
+                                 inline_field_values,
+                                 non_container_child_field_names,
+                                 non_container_child_fields,
+                                 container_child_field_names,
+                                 container_child_fields);
+
+  inline_field_names->emplace_back("comparison");
+  inline_field_values->emplace_back(
+      kComparisonNames[static_cast<int>(comparison_.getComparisonID())]);
+
+  non_container_child_field_names->emplace_back("left_operand");
+  non_container_child_fields->emplace_back(left_operand_.get());
+  non_container_child_field_names->emplace_back("right_operand");
+  non_container_child_fields->emplace_back(right_operand_.get());
 }
 
 }  // namespace quickstep

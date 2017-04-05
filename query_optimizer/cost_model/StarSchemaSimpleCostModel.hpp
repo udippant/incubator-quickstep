@@ -184,6 +184,9 @@ class StarSchemaSimpleCostModel : public CostModel {
                                       const std::size_t estimated_num_groups,
                                       std::size_t *max_num_groups);
 
+  bool canUseTwoPhaseNumericAggregation(const physical::AggregatePtr &aggregate,
+                                        const std::size_t estimated_num_groups);
+
  private:
   std::size_t estimateCardinalityForAggregate(
       const physical::AggregatePtr &physical_plan);

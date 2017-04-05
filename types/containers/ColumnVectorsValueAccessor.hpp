@@ -74,22 +74,23 @@ class ColumnVectorsValueAccessor : public ValueAccessor {
    *             this value-accessor is responsible for freeing this column
    *             vector.
    **/
-  void addColumn(ColumnVector *column, const bool owns = true) {
+  void addColumn(ColumnVectorPtr column) {
     // If this is not the first column to be added, make sure it is the same
     // length as the others.
     DCHECK(columns_.empty()
            || (column->isNative()
-               ? (static_cast<const NativeColumnVector*>(column)->size() == column_length_)
-               : (static_cast<const IndirectColumnVector*>(column)->size() == column_length_)));
+               ? (static_cast<const NativeColumnVector*>(column.get())->size() == column_length_)
+               : (static_cast<const IndirectColumnVector*>(column.get())->size() == column_length_)));
     columns_.push_back(column);
     column_native_.push_back(column->isNative());
-    if (owns) {
-      deleter_.addObject(column);
-    }
-    column_length_
-        = column->isNative()
-          ? static_cast<const NativeColumnVector*>(column)->size()
-          : static_cast<const IndirectColumnVector*>(column)->size();
+    column_length_ =
+        column->isNative()
+            ? static_cast<const NativeColumnVector*>(column.get())->size()
+            : static_cast<const IndirectColumnVector*>(column.get())->size();
+  }
+
+  void addColumn(ColumnVector *column) {
+    addColumn(ColumnVectorPtr(column));
   }
 
   inline void beginIteration() {
@@ -309,11 +310,10 @@ class ColumnVectorsValueAccessor : public ValueAccessor {
            && (static_cast<std::vector<ColumnVector*>::size_type>(attr_id) < columns_.size());
   }
 
-  std::vector<ColumnVector*> columns_;
+  std::vector<ColumnVectorPtr> columns_;
   std::vector<bool> column_native_;
   std::size_t column_length_;
   std::size_t current_position_;
-  ScopedDeleter deleter_;
 
   DISALLOW_COPY_AND_ASSIGN(ColumnVectorsValueAccessor);
 };

@@ -31,6 +31,7 @@
 #include "query_optimizer/expressions/PatternMatcher.hpp"
 #include "types/operations/binary_operations/BinaryOperation.hpp"
 #include "types/operations/binary_operations/BinaryOperationID.hpp"
+#include "utility/HashPair.hpp"
 
 #include "glog/logging.h"
 
@@ -102,6 +103,22 @@ std::vector<AttributeReferencePtr> BinaryExpression::getReferencedAttributes() c
       operation_,
       left_->concretize(substitution_map),
       right_->concretize(substitution_map));
+}
+
+std::size_t BinaryExpression::computeHash() const {
+  return CombineHashes(
+      CombineHashes(static_cast<std::size_t>(ExpressionType::kBinaryExpression),
+                    static_cast<std::size_t>(operation_.getBinaryOperationID())),
+      CombineHashes(left_->hash(), right_->hash()));
+}
+
+bool BinaryExpression::equals(const ScalarPtr &other) const {
+  BinaryExpressionPtr expr;
+  if (SomeBinaryExpression::MatchesWithConditionalCast(other, &expr)) {
+    return operation_.getBinaryOperationID() == expr->operation_.getBinaryOperationID()
+           && left_->equals(expr->left_) && right_->equals(expr->right_);
+  }
+  return false;
 }
 
 void BinaryExpression::getFieldStringItems(

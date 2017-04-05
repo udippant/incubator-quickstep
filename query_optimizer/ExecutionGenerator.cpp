@@ -1580,14 +1580,23 @@ void ExecutionGenerator::convertAggregate(
             ->canUseCollisionFreeAggregation(physical_plan,
                                              estimated_num_groups,
                                              &max_num_groups)) {
+//      std::cout << "Use collision free\n";
       aggr_state_proto->set_hash_table_impl_type(
           serialization::HashTableImplType::COLLISION_FREE_VECTOR);
       aggr_state_proto->set_estimated_num_entries(max_num_groups);
       use_parallel_initialization = true;
     } else {
-      // Otherwise, use SeparateChaining.
-      aggr_state_proto->set_hash_table_impl_type(
-          serialization::HashTableImplType::SEPARATE_CHAINING);
+      if (cost_model_for_aggregation_->canUseTwoPhaseNumericAggregation(
+              physical_plan, estimated_num_groups)) {
+//        std::cout << "Use two phase numeric\n";
+        aggr_state_proto->set_hash_table_impl_type(
+            serialization::HashTableImplType::THREAD_PRIVATE_COMPACT_KEY);
+      } else {
+        // Otherwise, use SeparateChaining.
+//        std::cout << "Use normal\n";
+        aggr_state_proto->set_hash_table_impl_type(
+            serialization::HashTableImplType::SEPARATE_CHAINING);
+      }
       aggr_state_proto->set_estimated_num_entries(std::max(16uL, estimated_num_groups));
     }
   } else {

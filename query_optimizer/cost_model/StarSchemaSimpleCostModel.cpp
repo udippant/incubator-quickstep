@@ -700,6 +700,57 @@ bool StarSchemaSimpleCostModel::canUseCollisionFreeAggregation(
   return true;
 }
 
+bool StarSchemaSimpleCostModel::canUseTwoPhaseNumericAggregation(
+    const physical::AggregatePtr &aggregate,
+    const std::size_t estimated_num_groups) {
+  if (estimated_num_groups >= 1000u) {
+    return false;
+  }
+
+  std::size_t total_key_size = 0;
+  for (const auto &key_expr : aggregate->grouping_expressions()) {
+    const Type &type = key_expr->getValueType();
+    if (type.isVariableLength()) {
+      return false;
+    }
+
+    const std::size_t key_size = type.maximumByteLength();
+    if (!QUICKSTEP_EQUALS_ANY_CONSTANT(key_size, 1u, 2u, 4u, 8u)) {
+      return false;
+    }
+
+    total_key_size += key_size;
+    if (total_key_size > 8u) {
+      return false;
+    }
+  }
+
+  for (const auto &agg_alias : aggregate->aggregate_expressions()) {
+    const E::AggregateFunctionPtr agg_expr =
+        std::static_pointer_cast<const E::AggregateFunction>(agg_alias->expression());
+    if (agg_expr->is_distinct()) {
+      return false;
+    }
+    switch (agg_expr->getAggregate().getAggregationID()) {
+      case AggregationID::kCount:
+        break;
+      case AggregationID::kSum: {
+        DCHECK_EQ(1u, agg_expr->getArguments().size());
+        const auto &argument = agg_expr->getArguments().front();
+        if (!QUICKSTEP_EQUALS_ANY_CONSTANT(argument->getValueType().getTypeID(),
+                                           kInt, kLong, kFloat, kDouble)) {
+          return false;
+        }
+        break;
+      }
+      default:
+        return false;
+    }
+  }
+
+  return true;
+}
+
 }  // namespace cost
 }  // namespace optimizer
 }  // namespace quickstep

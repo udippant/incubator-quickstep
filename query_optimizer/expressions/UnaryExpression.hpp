@@ -29,8 +29,10 @@
 #include "query_optimizer/expressions/ExprId.hpp"
 #include "query_optimizer/expressions/Expression.hpp"
 #include "query_optimizer/expressions/ExpressionType.hpp"
+#include "query_optimizer/expressions/PatternMatcher.hpp"
 #include "query_optimizer/expressions/Scalar.hpp"
 #include "types/operations/unary_operations/UnaryOperation.hpp"
+#include "utility/HashPair.hpp"
 #include "utility/Macros.hpp"
 
 #include "glog/logging.h"
@@ -85,6 +87,8 @@ class UnaryExpression : public Scalar {
   ::quickstep::Scalar* concretize(
       const std::unordered_map<ExprId, const CatalogAttribute*> &substitution_map) const override;
 
+  bool equals(const ScalarPtr &other) const override;
+
   /**
    * @brief Creates an immutable UnaryExpression.
    *
@@ -99,6 +103,8 @@ class UnaryExpression : public Scalar {
   }
 
  protected:
+  std::size_t computeHash() const override;
+
   void getFieldStringItems(
       std::vector<std::string> *inline_field_names,
       std::vector<std::string> *inline_field_values,

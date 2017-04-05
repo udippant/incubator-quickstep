@@ -28,7 +28,9 @@
 #include "query_optimizer/expressions/AttributeReference.hpp"
 #include "query_optimizer/expressions/ExprId.hpp"
 #include "query_optimizer/expressions/Expression.hpp"
+#include "query_optimizer/expressions/PatternMatcher.hpp"
 #include "types/Type.hpp"
+#include "utility/HashPair.hpp"
 
 #include "glog/logging.h"
 
@@ -49,6 +51,19 @@ ExpressionPtr ScalarLiteral::copyWithNewChildren(
 ::quickstep::Scalar *ScalarLiteral::concretize(
     const std::unordered_map<ExprId, const CatalogAttribute*> &substitution_map) const {
   return new ::quickstep::ScalarLiteral(value_, value_type_);
+}
+
+std::size_t ScalarLiteral::computeHash() const {
+  return CombineHashes(static_cast<std::size_t>(ExpressionType::kScalarLiteral),
+                       value_.getHash());
+}
+
+bool ScalarLiteral::equals(const ScalarPtr &other) const {
+  ScalarLiteralPtr lit;
+  if (SomeScalarLiteral::MatchesWithConditionalCast(other, &lit)) {
+    return value_type_.equals(lit->getValueType()) && value_.fastEqualCheck(lit->value());
+  }
+  return false;
 }
 
 void ScalarLiteral::getFieldStringItems(

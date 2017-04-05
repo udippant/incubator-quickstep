@@ -33,6 +33,7 @@
 #include "expressions/Expressions.pb.h"
 #include "expressions/scalar/Scalar.hpp"
 #include "expressions/scalar/ScalarAttribute.hpp"
+#include "expressions/scalar/ScalarCache.hpp"
 #include "expressions/window_aggregation/WindowAggregateFunction.hpp"
 #include "expressions/window_aggregation/WindowAggregateFunctionFactory.hpp"
 #include "expressions/window_aggregation/WindowAggregationHandle.hpp"
@@ -236,10 +237,15 @@ void WindowAggregationOperationState::windowAggregateBlocks(
       argument_accessor = new ColumnVectorsValueAccessor();
     }
 
+    std::unique_ptr<ScalarCache> scalar_cache = std::make_unique<ScalarCache>();
     for (const std::unique_ptr<const Scalar> &argument : arguments_) {
       argument_accessor->addColumn(argument->getAllValues(tuple_accessor,
-                                                          &sub_block_ref));
+                                                          &sub_block_ref,
+                                                          scalar_cache.get()));
     }
+
+    // Release common subexpression cache as early as possible.
+    scalar_cache.reset();
 
     InvokeOnAnyValueAccessor(tuple_accessor,
                              [&] (auto *tuple_accessor) -> void {  // NOLINT(build/c++11)

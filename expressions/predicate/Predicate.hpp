@@ -21,6 +21,7 @@
 #define QUICKSTEP_EXPRESSIONS_PREDICATE_PREDICATE_HPP_
 
 #include "catalog/CatalogTypedefs.hpp"
+#include "expressions/Expression.hpp"
 #include "expressions/Expressions.pb.h"
 #include "storage/StorageBlockInfo.hpp"
 #include "utility/Macros.hpp"
@@ -39,7 +40,7 @@ struct SubBlocksReference;
 /**
  * @brief Base class for all predicates.
  **/
-class Predicate {
+class Predicate : public Expression {
  public:
   /**
    * @brief The possible types of predicates.
@@ -65,6 +66,10 @@ class Predicate {
    *
    **/
   virtual ~Predicate() {
+  }
+
+  std::string getName() const override {
+    return kPredicateTypeNames[static_cast<int>(getPredicateType())];
   }
 
   /**
@@ -189,6 +194,14 @@ class Predicate {
   virtual bool getStaticResult() const;
 
  protected:
+  void getFieldStringItems(
+      std::vector<std::string> *inline_field_names,
+      std::vector<std::string> *inline_field_values,
+      std::vector<std::string> *non_container_child_field_names,
+      std::vector<const Expression*> *non_container_child_fields,
+      std::vector<std::string> *container_child_field_names,
+      std::vector<std::vector<const Expression*>> *container_child_fields) const override;
+
   Predicate() {
   }
 

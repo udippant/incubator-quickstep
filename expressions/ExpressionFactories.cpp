@@ -39,6 +39,7 @@
 #include "expressions/scalar/ScalarBinaryExpression.hpp"
 #include "expressions/scalar/ScalarCaseExpression.hpp"
 #include "expressions/scalar/ScalarLiteral.hpp"
+#include "expressions/scalar/ScalarSharedExpression.hpp"
 #include "expressions/scalar/ScalarUnaryExpression.hpp"
 #include "types/TypeFactory.hpp"
 #include "types/TypedValue.hpp"
@@ -179,6 +180,11 @@ Scalar* ScalarFactory::ReconstructFromProto(const serialization::Scalar &proto,
           ReconstructFromProto(proto.GetExtension(serialization::ScalarBinaryExpression::left_operand), database),
           ReconstructFromProto(proto.GetExtension(serialization::ScalarBinaryExpression::right_operand), database));
     }
+    case serialization::Scalar::SHARED_EXPRESSION: {
+      return new ScalarSharedExpression(
+          proto.GetExtension(serialization::ScalarSharedExpression::share_id),
+          ReconstructFromProto(proto.GetExtension(serialization::ScalarSharedExpression::operand), database));
+    }
     case serialization::Scalar::CASE_EXPRESSION: {
       const Type &result_type = TypeFactory::ReconstructFromProto(
           proto.GetExtension(serialization::ScalarCaseExpression::result_type));
@@ -258,6 +264,11 @@ bool ScalarFactory::ProtoIsValid(const serialization::Scalar &proto,
                && ProtoIsValid(proto.GetExtension(serialization::ScalarBinaryExpression::left_operand), database)
                && ProtoIsValid(proto.GetExtension(serialization::ScalarBinaryExpression::right_operand), database);
       }
+      break;
+    }
+    case serialization::Scalar::SHARED_EXPRESSION: {
+      return proto.HasExtension(serialization::ScalarSharedExpression::share_id)
+             && proto.HasExtension(serialization::ScalarSharedExpression::operand);
       break;
     }
     case serialization::Scalar::CASE_EXPRESSION: {

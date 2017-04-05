@@ -75,6 +75,10 @@ class HashTablePool {
         handles_(handles),
         storage_manager_(DCHECK_NOTNULL(storage_manager)) {}
 
+  HashTableImplType getHashTableImplType() const {
+    return hash_table_impl_type_;
+  }
+
   /**
    * @brief Check out a hash table for insertion.
    *

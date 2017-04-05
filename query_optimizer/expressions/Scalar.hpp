@@ -20,11 +20,13 @@
 #ifndef QUICKSTEP_QUERY_OPTIMIZER_EXPRESSIONS_SCALAR_HPP_
 #define QUICKSTEP_QUERY_OPTIMIZER_EXPRESSIONS_SCALAR_HPP_
 
+#include <cstddef>
 #include <memory>
 #include <unordered_map>
 
 #include "query_optimizer/expressions/Expression.hpp"
 #include "query_optimizer/expressions/ExprId.hpp"
+#include "utility/HashError.hpp"
 #include "utility/Macros.hpp"
 
 namespace quickstep {
@@ -65,10 +67,27 @@ class Scalar : public Expression {
       const std::unordered_map<ExprId, const CatalogAttribute*>& substitution_map)
       const = 0;
 
+  virtual bool equals(const ScalarPtr &other) const {
+    return false;
+  }
+
+  std::size_t hash() const {
+    if (hash_cache_ == nullptr) {
+      hash_cache_ = std::make_unique<std::size_t>(computeHash());
+    }
+    return *hash_cache_;
+  }
+
  protected:
   Scalar() {}
 
+  virtual std::size_t computeHash() const {
+    throw HashNotSupported("Unsupported computeHash() in " + getName());
+  }
+
  private:
+  mutable std::unique_ptr<std::size_t> hash_cache_;
+
   DISALLOW_COPY_AND_ASSIGN(Scalar);
 };
 

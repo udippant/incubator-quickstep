@@ -120,4 +120,22 @@ Predicate* NegationPredicate::NegatePredicate(Predicate *operand) {
   }
 }
 
+void NegationPredicate::getFieldStringItems(
+    std::vector<std::string> *inline_field_names,
+    std::vector<std::string> *inline_field_values,
+    std::vector<std::string> *non_container_child_field_names,
+    std::vector<const Expression*> *non_container_child_fields,
+    std::vector<std::string> *container_child_field_names,
+    std::vector<std::vector<const Expression*>> *container_child_fields) const {
+  Predicate::getFieldStringItems(inline_field_names,
+                                 inline_field_values,
+                                 non_container_child_field_names,
+                                 non_container_child_fields,
+                                 container_child_field_names,
+                                 container_child_fields);
+
+  non_container_child_field_names->emplace_back("operand");
+  non_container_child_fields->emplace_back(operand_.get());
+}
+
 }  // namespace quickstep

@@ -88,6 +88,8 @@ class AttributeReference : public NamedExpression {
   ::quickstep::Scalar* concretize(
       const std::unordered_map<ExprId, const CatalogAttribute*> &substitution_map) const override;
 
+  bool equals(const ScalarPtr &other) const override;
+
   /**
    * @brief Creates an immutable AttributReference.
    *
@@ -114,6 +116,8 @@ class AttributeReference : public NamedExpression {
   }
 
  protected:
+  std::size_t computeHash() const override;
+
   void getFieldStringItems(
      std::vector<std::string> *inline_field_names,
      std::vector<std::string> *inline_field_values,
