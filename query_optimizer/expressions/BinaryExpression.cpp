@@ -19,6 +19,7 @@
 
 #include "query_optimizer/expressions/BinaryExpression.hpp"
 
+#include <algorithm>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -106,17 +107,35 @@ std::vector<AttributeReferencePtr> BinaryExpression::getReferencedAttributes() c
 }
 
 std::size_t BinaryExpression::computeHash() const {
+  std::size_t left_hash = left_->hash();
+  std::size_t right_hash = right_->hash();
+
+  if (operation_.isCommutative() && left_hash > right_hash) {
+    std::swap(left_hash, right_hash);
+  }
+
   return CombineHashes(
       CombineHashes(static_cast<std::size_t>(ExpressionType::kBinaryExpression),
                     static_cast<std::size_t>(operation_.getBinaryOperationID())),
-      CombineHashes(left_->hash(), right_->hash()));
+      CombineHashes(left_hash, right_hash));
 }
 
 bool BinaryExpression::equals(const ScalarPtr &other) const {
   BinaryExpressionPtr expr;
   if (SomeBinaryExpression::MatchesWithConditionalCast(other, &expr)) {
+    ScalarPtr left = left_;
+    ScalarPtr right = right_;
+
+    if (operation_.isCommutative()) {
+      const bool self_order = (left_->hash() < right_->hash());
+      const bool other_order = (expr->left_->hash() < expr->right_->hash());
+      if (self_order ^ other_order) {
+        std::swap(left, right);
+      }
+    }
+
     return operation_.getBinaryOperationID() == expr->operation_.getBinaryOperationID()
-           && left_->equals(expr->left_) && right_->equals(expr->right_);
+           && left->equals(expr->left_) && right->equals(expr->right_);
   }
   return false;
 }

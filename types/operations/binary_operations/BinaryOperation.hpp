@@ -334,6 +334,10 @@ class BinaryOperation : public Operation {
     return kBinaryOperationShortNames[static_cast<std::size_t>(operation_id_)];
   }
 
+  virtual bool isCommutative() const {
+    return false;
+  }
+
   /**
    * @brief Determine whether this BinaryOperation can apply to the specified
    *        Types.
